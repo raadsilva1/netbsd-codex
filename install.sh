@@ -88,9 +88,13 @@ say "Cloning or updating Codex source"
 mkdir -p "$HOME/src"
 
 if [ -d "$SRC_DIR/.git" ]; then
+  say "Existing git repository found at $SRC_DIR"
   cd "$SRC_DIR"
   git fetch --tags --prune --force origin
+elif [ -d "$SRC_DIR" ]; then
+  die "$SRC_DIR exists but is not a git repository. Remove it or rename it, then rerun the script."
 else
+  say "Cloning Codex source into $SRC_DIR"
   git clone "$CODEX_REPO" "$SRC_DIR"
   cd "$SRC_DIR"
   git fetch --tags --prune --force origin
@@ -98,17 +102,24 @@ fi
 
 say "Checking out Codex ref: $CODEX_REF"
 
-git checkout "$CODEX_REF"
+git checkout -f "$CODEX_REF"
+git reset --hard "$CODEX_REF"
 
 [ -d "$CODEX_RS_DIR" ] || die "Could not find codex-rs directory"
 
 cd "$CODEX_RS_DIR"
 
-say "Building Codex Rust CLI with locked dependencies"
+say "Preparing NetBSD build environment"
 
 export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export OPENSSL_DIR="/usr/pkg"
 export RUSTFLAGS="-C link-arg=-Wl,-R/usr/pkg/lib ${RUSTFLAGS:-}"
+
+say "Repairing Codex release Cargo.lock workspace version mismatch"
+
+cargo update --workspace
+
+say "Building Codex Rust CLI with locked dependencies"
 
 cargo build --release --locked --bin codex
 
@@ -192,11 +203,13 @@ To update later while staying compatible with rustc 1.90.0:
 
   cd "$SRC_DIR"
   git fetch --tags --prune --force origin
-  git checkout "$CODEX_REF"
+  git checkout -f "$CODEX_REF"
+  git reset --hard "$CODEX_REF"
   cd codex-rs
   export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:\${PKG_CONFIG_PATH:-}"
   export OPENSSL_DIR="/usr/pkg"
   export RUSTFLAGS="-C link-arg=-Wl,-R/usr/pkg/lib \${RUSTFLAGS:-}"
+  cargo update --workspace
   cargo build --release --locked --bin codex
   su root -c 'cp target/release/codex $INSTALL_BIN && chmod 755 $INSTALL_BIN'
 

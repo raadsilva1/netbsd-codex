@@ -4,7 +4,7 @@ set -eu
 CODEX_REPO="https://github.com/openai/codex.git"
 SRC_DIR="$HOME/src/codex"
 CODEX_RS_DIR="$SRC_DIR/codex-rs"
-INSTALL_DIR="$HOME/bin"
+INSTALL_DIR="/usr/local/bin"
 INSTALL_BIN="$INSTALL_DIR/codex"
 
 say() {
@@ -105,44 +105,37 @@ cargo build --release --bin codex
 
 say "Installing Codex to $INSTALL_BIN"
 
-mkdir -p "$INSTALL_DIR"
-cp target/release/codex "$INSTALL_BIN"
-chmod +x "$INSTALL_BIN"
+run_as_root "mkdir -p '$INSTALL_DIR'"
+run_as_root "cp '$CODEX_RS_DIR/target/release/codex' '$INSTALL_BIN'"
+run_as_root "chmod 755 '$INSTALL_BIN'"
 
-say "Ensuring ~/bin is in PATH"
+say "Checking whether /usr/local/bin is in PATH"
 
-PROFILE_FILE="$HOME/.profile"
+case ":$PATH:" in
+  *":/usr/local/bin:"*)
+    say "/usr/local/bin is already in PATH"
+    ;;
+  *)
+    warn "/usr/local/bin is not currently in PATH"
+    warn "Add this to ~/.profile if needed:"
+    printf '\n  export PATH="/usr/local/bin:$PATH"\n'
+    ;;
+esac
 
-if [ -f "$PROFILE_FILE" ]; then
-  if grep 'HOME/bin' "$PROFILE_FILE" >/dev/null 2>&1; then
-    say "~/bin already appears to be configured in $PROFILE_FILE"
-  else
-    {
-      printf '\n# Add user binaries to PATH\n'
-      printf 'export PATH="$HOME/bin:$PATH"\n'
-    } >> "$PROFILE_FILE"
-    say "Added ~/bin to PATH in $PROFILE_FILE"
-  fi
-else
-  {
-    printf '# Add user binaries to PATH\n'
-    printf 'export PATH="$HOME/bin:$PATH"\n'
-  } > "$PROFILE_FILE"
-  say "Created $PROFILE_FILE with ~/bin in PATH"
-fi
-
-PATH="$HOME/bin:$PATH"
-export PATH
 hash -r 2>/dev/null || true
 
 say "Verifying Codex install"
 
-command -v codex || die "codex is not on PATH"
+if command -v codex >/dev/null 2>&1; then
+  command -v codex
+else
+  warn "codex is installed at $INSTALL_BIN, but it is not currently on PATH"
+fi
 
-if codex --version >/dev/null 2>&1; then
-  codex --version
-elif codex -V >/dev/null 2>&1; then
-  codex -V
+if "$INSTALL_BIN" --version >/dev/null 2>&1; then
+  "$INSTALL_BIN" --version
+elif "$INSTALL_BIN" -V >/dev/null 2>&1; then
+  "$INSTALL_BIN" -V
 else
   warn "Codex was installed, but version command did not return cleanly"
 fi
@@ -168,10 +161,13 @@ Codex Rust CLI is installed at:
 
   $INSTALL_BIN
 
-To use it now in this shell:
+To use it:
 
-  export PATH="\$HOME/bin:\$PATH"
   codex
+
+If your shell cannot find it, run:
+
+  export PATH="/usr/local/bin:\$PATH"
 
 For workspace editing mode:
 
@@ -186,6 +182,6 @@ To update later:
   export OPENSSL_DIR="/usr/pkg"
   export RUSTFLAGS="-C link-arg=-Wl,-R/usr/pkg/lib \${RUSTFLAGS:-}"
   cargo build --release --bin codex
-  cp target/release/codex "$INSTALL_BIN"
+  su root -c 'cp target/release/codex $INSTALL_BIN && chmod 755 $INSTALL_BIN'
 
 EOF

@@ -2,6 +2,11 @@
 set -eu
 
 CODEX_REPO="https://github.com/openai/codex.git"
+
+# Pinned for systems with rustc 1.90.0.
+# Newer Codex tags may require newer Rust.
+CODEX_REF="${CODEX_REF:-rust-v0.87.0}"
+
 SRC_DIR="$HOME/src/codex"
 CODEX_RS_DIR="$SRC_DIR/codex-rs"
 INSTALL_DIR="/usr/local/bin"
@@ -84,22 +89,28 @@ mkdir -p "$HOME/src"
 
 if [ -d "$SRC_DIR/.git" ]; then
   cd "$SRC_DIR"
-  git pull
+  git fetch --tags --prune --force origin
 else
   git clone "$CODEX_REPO" "$SRC_DIR"
+  cd "$SRC_DIR"
+  git fetch --tags --prune --force origin
 fi
+
+say "Checking out Codex ref: $CODEX_REF"
+
+git checkout "$CODEX_REF"
 
 [ -d "$CODEX_RS_DIR" ] || die "Could not find codex-rs directory"
 
 cd "$CODEX_RS_DIR"
 
-say "Building Codex Rust CLI"
+say "Building Codex Rust CLI with locked dependencies"
 
 export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export OPENSSL_DIR="/usr/pkg"
 export RUSTFLAGS="-C link-arg=-Wl,-R/usr/pkg/lib ${RUSTFLAGS:-}"
 
-cargo build --release --bin codex
+cargo build --release --locked --bin codex
 
 [ -x "target/release/codex" ] || die "Build finished, but target/release/codex was not found"
 
@@ -161,6 +172,10 @@ Codex Rust CLI is installed at:
 
   $INSTALL_BIN
 
+Built from Codex ref:
+
+  $CODEX_REF
+
 To use it:
 
   codex
@@ -173,15 +188,22 @@ For workspace editing mode:
 
   codex --sandbox workspace-write
 
-To update later:
+To update later while staying compatible with rustc 1.90.0:
 
   cd "$SRC_DIR"
-  git pull
+  git fetch --tags --prune --force origin
+  git checkout "$CODEX_REF"
   cd codex-rs
   export PKG_CONFIG_PATH="/usr/pkg/lib/pkgconfig:\${PKG_CONFIG_PATH:-}"
   export OPENSSL_DIR="/usr/pkg"
   export RUSTFLAGS="-C link-arg=-Wl,-R/usr/pkg/lib \${RUSTFLAGS:-}"
-  cargo build --release --bin codex
+  cargo build --release --locked --bin codex
   su root -c 'cp target/release/codex $INSTALL_BIN && chmod 755 $INSTALL_BIN'
+
+To try a newer Codex tag later, run this script like:
+
+  CODEX_REF=rust-v0.88.0 sh install-codex-netbsd.sh
+
+But newer tags may require newer rustc.
 
 EOF
